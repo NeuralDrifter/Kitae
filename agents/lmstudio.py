@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Michael Burgus (https://github.com/NeuralDrifter)
+# Licensed under the MIT License. See LICENSE file for details.
+
 """LM Studio agent — local inference via OpenAI-compatible API."""
 
 from __future__ import annotations

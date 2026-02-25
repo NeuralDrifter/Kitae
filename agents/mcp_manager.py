@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Michael Burgus (https://github.com/NeuralDrifter)
+# Licensed under the MIT License. See LICENSE file for details.
+
 """MCP (Model Context Protocol) manager — sync wrapper around async MCP SDK.
 
 Connects to MCP servers as stdio subprocesses, caches their tool definitions

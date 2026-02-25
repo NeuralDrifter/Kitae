@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Michael Burgus (https://github.com/NeuralDrifter)
+# Licensed under the MIT License. See LICENSE file for details.
+
 """Gemini CLI agent — runs gemini in headless stream-json mode."""
 
 import json

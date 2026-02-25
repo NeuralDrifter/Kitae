@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Michael Burgus (https://github.com/NeuralDrifter)
+# Licensed under the MIT License. See LICENSE file for details.
+
 """Center panel — tabbed agent output with Kitae theme."""
 
 import customtkinter as ctk

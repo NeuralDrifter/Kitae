@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Michael Burgus (https://github.com/NeuralDrifter)
+# Licensed under the MIT License. See LICENSE file for details.
+
 """Splash screen — shows the Kitae artwork for 1.5s, then launches the main app."""
 
 import os

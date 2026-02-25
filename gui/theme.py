@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Michael Burgus (https://github.com/NeuralDrifter)
+# Licensed under the MIT License. See LICENSE file for details.
+
 """Kitae color theme — Japanese swordsmith aesthetic.
 
 Palette pulled from the splash art:

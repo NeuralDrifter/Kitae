@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Michael Burgus (https://github.com/NeuralDrifter)
+# Licensed under the MIT License. See LICENSE file for details.
+
 """Shell bridge for API-only agents (DeepSeek, etc.).
 
 Gives models that can't touch the filesystem the ability to execute shell
