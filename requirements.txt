@@ -1,0 +1,4 @@
+customtkinter>=5.2
+openai>=1.0
+mcp>=1.0
+keyring>=25.0
