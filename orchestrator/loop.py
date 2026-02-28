@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional
 
-from agents.base import AgentBase, Event, EventType
+from agents.base import AgentBase, Event, EventType, SOURCE_LOOP
 from orchestrator.context import build_loop_prompt, has_completion_signal
 from orchestrator.modes import Mode
 
@@ -71,7 +71,7 @@ class LoopManager:
 
                 # Check iteration limit
                 if self._config.max_iterations > 0 and self.iteration > self._config.max_iterations:
-                    self._emit(Event(EventType.COMPLETE, "loop",
+                    self._emit(Event(EventType.COMPLETE, SOURCE_LOOP,
                                      text=f"Reached max iterations ({self._config.max_iterations})"))
                     break
 
@@ -79,7 +79,7 @@ class LoopManager:
                 if self._config.max_duration_secs > 0:
                     elapsed = time.time() - self.start_time
                     if elapsed >= self._config.max_duration_secs:
-                        self._emit(Event(EventType.COMPLETE, "loop",
+                        self._emit(Event(EventType.COMPLETE, SOURCE_LOOP,
                                          text=f"Reached max duration"))
                         break
 
@@ -93,7 +93,7 @@ class LoopManager:
                 # Notify iteration start
                 active = self._mode.pick_agents(self._agents, self.iteration)
                 agent_names = ", ".join(a.name for a in active)
-                self._emit(Event(EventType.TOKEN, "loop",
+                self._emit(Event(EventType.TOKEN, SOURCE_LOOP,
                                  text=f"\n{'='*60}\n Iteration {self.iteration} — {agent_names}\n{'='*60}\n\n",
                                  iteration=self.iteration))
 
@@ -111,35 +111,35 @@ class LoopManager:
                     cost = self._mode.execute(self._agents, self.iteration, augmented, _callback)
                     self.total_cost += cost or 0.0
                 except Exception as e:
-                    self._emit(Event(EventType.ERROR, "loop", text=str(e),
+                    self._emit(Event(EventType.ERROR, SOURCE_LOOP, text=str(e),
                                      iteration=self.iteration))
                     continue
 
                 # Emit cost update
                 output_text = "".join(iteration_output)
-                self._emit(Event(EventType.COST, "loop", cost=self.total_cost,
+                self._emit(Event(EventType.COST, SOURCE_LOOP, cost=self.total_cost,
                                  iteration=self.iteration))
 
                 # Check completion signal
                 if has_completion_signal(output_text, self._config.completion_signal):
-                    self._emit(Event(EventType.COMPLETE, "loop",
+                    self._emit(Event(EventType.COMPLETE, SOURCE_LOOP,
                                      text="Completion signal detected"))
                     break
 
                 # Check cost limit
                 if self._config.max_cost_usd > 0 and self.total_cost >= self._config.max_cost_usd:
-                    self._emit(Event(EventType.COMPLETE, "loop",
+                    self._emit(Event(EventType.COMPLETE, SOURCE_LOOP,
                                      text=f"Reached max cost (${self.total_cost:.2f})"))
                     break
 
         except Exception as e:
-            self._emit(Event(EventType.ERROR, "loop", text=f"Loop crashed: {e}"))
+            self._emit(Event(EventType.ERROR, SOURCE_LOOP, text=f"Loop crashed: {e}"))
         finally:
             # Clean up parallel worktrees if any
             if hasattr(self._mode, "cleanup"):
                 self._mode.cleanup()
             self.running = False
-            self._emit(Event(EventType.COMPLETE, "loop",
+            self._emit(Event(EventType.COMPLETE, SOURCE_LOOP,
                              text=f"Loop finished — {self.iteration} iterations, ${self.total_cost:.2f}"))
 
     def _emit(self, event: Event):

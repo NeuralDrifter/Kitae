@@ -5,6 +5,7 @@
 
 import customtkinter as ctk
 from gui import theme as T
+from gui.session import SessionPhase
 
 
 class StatusBar(ctk.CTkFrame):
@@ -15,7 +16,7 @@ class StatusBar(ctk.CTkFrame):
         self.grid_columnconfigure((0, 1, 2, 3), weight=1)
 
         # Each metric: small label + value, stacked
-        self.iteration_label = self._make_metric(col=0, label="FOLD", value="Idle")
+        self.iteration_label = self._make_metric(col=0, label="FOLD", value=SessionPhase.IDLE)
         self.elapsed_label = self._make_metric(col=1, label="ELAPSED", value="00:00:00")
         self.cost_label = self._make_metric(col=2, label="COST", value="$0.00")
         self.status_label = self._make_metric(col=3, label="STATUS", value="\u2014",
@@ -62,14 +63,14 @@ class StatusBar(ctk.CTkFrame):
 
     def set_status(self, text: str):
         color = T.GOLD
-        if text == "Tempered":
+        if text == SessionPhase.TEMPERED:
             color = T.GREEN
-        elif text == "Quenching":
+        elif text == SessionPhase.QUENCHING:
             color = T.RED
         self.status_label.configure(text=text, text_color=color)
 
     def reset(self):
-        self.iteration_label.configure(text="Idle", text_color=T.TEXT_DIM)
+        self.iteration_label.configure(text=SessionPhase.IDLE, text_color=T.TEXT_DIM)
         self.elapsed_label.configure(text="00:00:00", text_color=T.TEXT_DIM)
         self.cost_label.configure(text="$0.00", text_color=T.TEXT_DIM)
         self.status_label.configure(text="\u2014", text_color=T.GOLD)

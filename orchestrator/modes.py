@@ -13,9 +13,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from agents.base import AgentBase, Event, EventType
 
+# Mode name constants
+MODE_SINGLE = "single"
+MODE_ROUND_ROBIN = "round-robin"
+MODE_PARALLEL = "parallel"
+MODE_REVIEWER = "reviewer"
+
+# Directory constants
+AGENT_LOOP_DIR = ".agent-loop"
+BACKUPS_DIR = "backups"
+
 # Directories to skip when copying the base into agent folders
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv",
-             ".agent-loop", "backups"}
+             AGENT_LOOP_DIR, BACKUPS_DIR}
 
 
 class Mode(ABC):
@@ -38,7 +48,7 @@ class Mode(ABC):
 
 class SingleMode(Mode):
     """One agent runs every iteration."""
-    name = "single"
+    name = MODE_SINGLE
 
     def pick_agents(self, agents, iteration):
         return [agents[0]]
@@ -51,7 +61,7 @@ class SingleMode(Mode):
 
 class RoundRobinMode(Mode):
     """Cycles through agents each iteration."""
-    name = "round-robin"
+    name = MODE_ROUND_ROBIN
 
     def pick_agents(self, agents, iteration):
         idx = (iteration - 1) % len(agents)
@@ -66,7 +76,7 @@ class RoundRobinMode(Mode):
 
 def backup_base(working_dir: str) -> str:
     """Zip the base project into backups/. Returns the zip path."""
-    backups_dir = os.path.join(working_dir, "backups")
+    backups_dir = os.path.join(working_dir, BACKUPS_DIR)
     os.makedirs(backups_dir, exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     zip_path = os.path.join(backups_dir, f"base_backup_{stamp}.zip")
@@ -75,7 +85,7 @@ def backup_base(working_dir: str) -> str:
         for root, dirs, files in os.walk(working_dir):
             # Prune dirs we don't want in the backup
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS
-                       and not d.startswith(".agent-loop")]
+                       and not d.startswith(AGENT_LOOP_DIR)]
             for f in files:
                 full = os.path.join(root, f)
                 arcname = os.path.relpath(full, working_dir)
@@ -86,7 +96,7 @@ def backup_base(working_dir: str) -> str:
 
 def copy_base_to_agent_dir(working_dir: str, agent_name: str) -> str:
     """Copy the base project into .agent-loop/<agent_name>/. Returns the path."""
-    agent_dir = os.path.join(working_dir, ".agent-loop", agent_name)
+    agent_dir = os.path.join(working_dir, AGENT_LOOP_DIR, agent_name)
 
     # Wipe old copy if it exists
     if os.path.exists(agent_dir):
@@ -94,7 +104,7 @@ def copy_base_to_agent_dir(working_dir: str, agent_name: str) -> str:
     os.makedirs(agent_dir)
 
     for item in os.listdir(working_dir):
-        if item in SKIP_DIRS or item.startswith(".agent-loop"):
+        if item in SKIP_DIRS or item.startswith(AGENT_LOOP_DIR):
             continue
         src = os.path.join(working_dir, item)
         dst = os.path.join(agent_dir, item)
@@ -132,7 +142,7 @@ class ParallelMode(Mode):
 
     The user compares results by diffing the agent folders.
     """
-    name = "parallel"
+    name = MODE_PARALLEL
     _agent_dirs: dict[str, str] = {}  # agent_name -> folder path
     _setup_done: bool = False
     backup_requested: bool = False  # Set by GUI before loop starts
@@ -170,7 +180,7 @@ class ParallelMode(Mode):
 
 class ReviewerMode(Mode):
     """First agent generates, second agent reviews."""
-    name = "reviewer"
+    name = MODE_REVIEWER
 
     def pick_agents(self, agents, iteration):
         return agents[:2]
@@ -208,8 +218,8 @@ class ReviewerMode(Mode):
 
 
 MODES = {
-    "single": SingleMode,
-    "round-robin": RoundRobinMode,
-    "parallel": ParallelMode,
-    "reviewer": ReviewerMode,
+    MODE_SINGLE: SingleMode,
+    MODE_ROUND_ROBIN: RoundRobinMode,
+    MODE_PARALLEL: ParallelMode,
+    MODE_REVIEWER: ReviewerMode,
 }

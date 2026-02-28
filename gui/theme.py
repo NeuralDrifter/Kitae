@@ -53,6 +53,12 @@ BORDER = "#2A2A34"           # Subtle
 BORDER_MID = "#3A3A44"       # Medium
 BORDER_BRIGHT = "#4A4A56"   # Prominent
 
+# Session tab bar
+TAB_HEIGHT = 36
+TAB_DOT_RUNNING = GREEN
+TAB_DOT_IDLE = TEXT_FAINT
+TAB_DOT_COMPLETE = GOLD
+
 # Spacing constants (px)
 CARD_PAD_X = 10
 CARD_PAD_Y = 8

@@ -15,7 +15,11 @@ import subprocess
 from pathlib import Path
 from typing import List, Tuple
 
+from orchestrator.modes import AGENT_LOOP_DIR
+
 IS_WINDOWS = platform.system() == "Windows"
+SHELL_CMD = (["powershell", "-NoProfile", "-NonInteractive", "-Command"]
+             if IS_WINDOWS else ["bash", "-c"])
 
 # ── System instruction injected as the system message ───────────────────────
 
@@ -94,7 +98,7 @@ SYSTEM_INSTRUCTION = _build_system_instruction()
 # ── Directories / extensions to skip when scanning ──────────────────────────
 
 _SKIP_DIRS = {
-    ".git", "__pycache__", "node_modules", ".agent-loop",
+    ".git", "__pycache__", "node_modules", AGENT_LOOP_DIR,
     ".venv", "venv", "env", ".mypy_cache", ".pytest_cache",
     "dist", "build", ".next", ".cache", "target",
 }
@@ -199,18 +203,13 @@ def execute_bash_blocks(blocks: List[str], cwd: str,
     """
     results: List[Tuple[str, str, int]] = []
 
-    if IS_WINDOWS:
-        shell_cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command"]
-    else:
-        shell_cmd = ["bash", "-c"]
-
     for cmd in blocks:
         # Short preview for display (first line, truncated)
         preview = cmd.split("\n")[0][:80]
 
         try:
             proc = subprocess.run(
-                shell_cmd + [cmd],
+                SHELL_CMD + [cmd],
                 cwd=cwd,
                 capture_output=True,
                 text=True,

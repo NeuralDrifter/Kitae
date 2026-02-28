@@ -5,18 +5,12 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from openai import OpenAI
 
-from .base import AgentBase, Event, EventType
-from .file_bridge import (
-    SYSTEM_INSTRUCTION,
-    build_file_context,
-    extract_bash_blocks,
-    execute_bash_blocks,
-)
+from .base import Event, EventType, AGENT_DEEPSEEK
+from .openai_agent import OpenAIAgent
 
 if TYPE_CHECKING:
     from .mcp_manager import MCPManager
@@ -25,190 +19,25 @@ if TYPE_CHECKING:
 INPUT_COST_PER_M = 0.27
 OUTPUT_COST_PER_M = 1.10
 
-MAX_TOOL_ROUNDS = 10
 
-
-class DeepSeekAgent(AgentBase):
-    name = "deepseek"
+class DeepSeekAgent(OpenAIAgent):
+    name = AGENT_DEEPSEEK
 
     def __init__(self, api_key: str, base_url: str = "https://api.deepseek.com/v1",
                  model: str = "deepseek-chat",
                  mcp_manager: MCPManager | None = None):
-        super().__init__()
-        self._client = OpenAI(api_key=api_key, base_url=base_url)
-        self._model = model
-        self._mcp = mcp_manager
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        super().__init__(client, model, mcp_manager)
 
-    def run(self, prompt: str, callback: callable, cwd: str = "") -> float:
-        self.reset()
-        cost = 0.0
+    def _configure_stream_kwargs(self, kwargs: dict):
+        kwargs["stream_options"] = {"include_usage": True}
 
-        # ── Build messages ────────────────────────────────────────────────
-        messages: list[dict] = []
-        if cwd:
-            messages.append({"role": "system", "content": SYSTEM_INSTRUCTION})
-            file_ctx = build_file_context(cwd)
-            if file_ctx:
-                prompt = file_ctx + "\n---\n\n" + prompt
+    def _compute_cost(self, prompt_tokens: int,
+                      completion_tokens: int) -> float:
+        return (prompt_tokens * INPUT_COST_PER_M
+                + completion_tokens * OUTPUT_COST_PER_M) / 1_000_000
 
-        messages.append({"role": "user", "content": prompt})
-
-        # ── MCP tools in OpenAI format (if available) ─────────────────────
-        tools = self._mcp.get_openai_tools() if self._mcp else []
-
-        # ── Tool-calling loop ─────────────────────────────────────────────
-        content_chunks: list[str] = []
-
-        for round_idx in range(MAX_TOOL_ROUNDS):
-            if self.stopped:
-                break
-
-            # On last allowed round, omit tools to force a text response
-            send_tools = tools if (tools and round_idx < MAX_TOOL_ROUNDS - 1) else None
-
-            text, tool_calls, round_cost = self._stream_completion(
-                messages, send_tools, callback,
-            )
-            cost += round_cost
-
-            if text:
-                content_chunks.append(text)
-
-            # If no tool calls, we're done
-            if not tool_calls:
-                break
-
-            # Append assistant message with tool calls
-            messages.append({
-                "role": "assistant",
-                "content": text or None,
-                "tool_calls": [
-                    {
-                        "id": tc["id"],
-                        "type": "function",
-                        "function": {
-                            "name": tc["name"],
-                            "arguments": tc["arguments"],
-                        },
-                    }
-                    for tc in tool_calls
-                ],
-            })
-
-            # Execute each tool call and append results
-            for tc in tool_calls:
-                callback(Event(EventType.TOKEN, self.name,
-                               text=f"\n[mcp] Calling tool: {tc['name']}\n"))
-                try:
-                    args = json.loads(tc["arguments"])
-                    result = self._mcp.call_tool(tc["name"], args)
-                except Exception as exc:
-                    result = f"[mcp] Error: {exc}"
-
-                display = result[:1500]
-                if len(result) > 1500:
-                    display += "\n... (truncated)"
-                callback(Event(EventType.TOKEN, self.name,
-                               text=f"[mcp] Result: {display}\n"))
-
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc["id"],
-                    "content": result,
-                })
-
-        # ── Bash bridge: extract and execute bash blocks ──────────────────
-        if cwd and content_chunks:
-            full_output = "".join(content_chunks)
-            blocks = extract_bash_blocks(full_output)
-            if blocks:
-                callback(Event(EventType.TOKEN, self.name,
-                               text=f"\n\n[deepseek] Executing {len(blocks)} bash block(s)...\n"))
-
-                results = execute_bash_blocks(blocks, cwd)
-                for preview, output, rc in results:
-                    status = "ok" if rc == 0 else f"exit {rc}"
-                    msg = f"$ {preview} [{status}]\n"
-                    if output:
-                        display = output[:1000]
-                        if len(output) > 1000:
-                            display += "\n... (truncated)"
-                        msg += display + "\n"
-                    callback(Event(EventType.TOKEN, self.name, text=msg))
-
-        callback(Event(EventType.COST, self.name, cost=cost))
-        return cost
-
-    # ── Streaming helper ──────────────────────────────────────────────────
-
-    def _stream_completion(
-        self,
-        messages: list[dict],
-        tools: list[dict] | None,
-        callback: callable,
-    ) -> tuple[str, list[dict], float]:
-        """Stream one chat completion. Returns (text, tool_calls, cost).
-
-        tool_calls is a list of dicts: {id, name, arguments (json string)}.
-        """
-        content_parts: list[str] = []
-        # Accumulate tool calls: index -> {id, name, arguments}
-        tc_accum: dict[int, dict] = {}
-        cost = 0.0
-
-        kwargs = dict(
-            model=self._model,
-            messages=messages,
-            stream=True,
-            stream_options={"include_usage": True},
-        )
-        if tools:
-            kwargs["tools"] = tools
-
-        try:
-            stream = self._client.chat.completions.create(**kwargs)
-
-            for chunk in stream:
-                if self.stopped:
-                    break
-
-                if chunk.choices:
-                    choice = chunk.choices[0]
-                    delta = choice.delta
-                    if delta:
-                        # Reasoning tokens (deepseek-reasoner)
-                        reasoning = getattr(delta, "reasoning_content", None)
-                        if reasoning:
-                            callback(Event(EventType.TOKEN, self.name, text=reasoning))
-
-                        # Content tokens
-                        if delta.content:
-                            callback(Event(EventType.TOKEN, self.name, text=delta.content))
-                            content_parts.append(delta.content)
-
-                        # Tool call deltas
-                        if delta.tool_calls:
-                            for tc_delta in delta.tool_calls:
-                                idx = tc_delta.index
-                                if idx not in tc_accum:
-                                    tc_accum[idx] = {"id": "", "name": "", "arguments": ""}
-                                if tc_delta.id:
-                                    tc_accum[idx]["id"] = tc_delta.id
-                                if tc_delta.function:
-                                    if tc_delta.function.name:
-                                        tc_accum[idx]["name"] = tc_delta.function.name
-                                    if tc_delta.function.arguments:
-                                        tc_accum[idx]["arguments"] += tc_delta.function.arguments
-
-                # Usage info comes in the final chunk
-                if chunk.usage:
-                    inp = chunk.usage.prompt_tokens or 0
-                    out = chunk.usage.completion_tokens or 0
-                    cost = (inp * INPUT_COST_PER_M + out * OUTPUT_COST_PER_M) / 1_000_000
-
-        except Exception as e:
-            callback(Event(EventType.ERROR, self.name, text=str(e)))
-
-        text = "".join(content_parts)
-        tool_calls = [tc_accum[i] for i in sorted(tc_accum)] if tc_accum else []
-        return text, tool_calls, cost
+    def _handle_delta_extras(self, delta, callback: callable):
+        reasoning = getattr(delta, "reasoning_content", None)
+        if reasoning:
+            callback(Event(EventType.TOKEN, self.name, text=reasoning))

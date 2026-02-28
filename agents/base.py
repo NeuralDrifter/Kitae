@@ -9,6 +9,15 @@ from enum import Enum, auto
 from typing import Optional
 import threading
 
+# Agent name constants
+AGENT_CLAUDE = "claude"
+AGENT_GEMINI = "gemini"
+AGENT_DEEPSEEK = "deepseek"
+AGENT_LMSTUDIO = "lmstudio"
+
+# Event source for orchestrator loop messages
+SOURCE_LOOP = "loop"
+
 
 class EventType(Enum):
     TOKEN = auto()           # Streaming text chunk

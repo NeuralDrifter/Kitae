@@ -6,6 +6,8 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog
+from agents import AGENT_REGISTRY
+from orchestrator.modes import MODE_SINGLE, MODE_ROUND_ROBIN, MODE_PARALLEL, MODE_REVIEWER
 from gui import theme as T
 
 
@@ -125,17 +127,14 @@ class ConfigPanel(ctk.CTkScrollableFrame):
         # ── Agents Section ────────────────────────────
         card, r = _make_section(self, r, "AGENTS")
 
-        self.claude_var = ctk.BooleanVar(value=settings.claude_available)
-        self.gemini_var = ctk.BooleanVar(value=settings.gemini_available)
-        self.deepseek_var = ctk.BooleanVar(value=settings.deepseek_available)
-        self.lmstudio_var = ctk.BooleanVar(value=settings.lmstudio_available)
-
-        agents_info = [
-            ("Claude Code", self.claude_var, settings.claude_available),
-            ("Gemini CLI", self.gemini_var, settings.gemini_available),
-            ("DeepSeek API", self.deepseek_var, settings.deepseek_available),
-            ("LM Studio", self.lmstudio_var, settings.lmstudio_available),
-        ]
+        # Build agent checkbox vars from the registry
+        self._agent_vars: dict[str, ctk.BooleanVar] = {}
+        agents_info = []
+        for name, entry in AGENT_REGISTRY.items():
+            available = getattr(settings, entry["available_attr"])
+            var = ctk.BooleanVar(value=available)
+            self._agent_vars[name] = var
+            agents_info.append((entry["label"], var, available))
 
         for i, (label, var, available) in enumerate(agents_info):
             row_frame = ctk.CTkFrame(card, fg_color="transparent")
@@ -162,28 +161,23 @@ class ConfigPanel(ctk.CTkScrollableFrame):
             )
             cb.grid(row=0, column=1, sticky="w")
 
-        # Store checkboxes for external access
-        self.claude_cb = card.grid_slaves(row=0)[0].grid_slaves(column=1)[0]
-        self.gemini_cb = card.grid_slaves(row=1)[0].grid_slaves(column=1)[0]
-        self.deepseek_cb = card.grid_slaves(row=2)[0].grid_slaves(column=1)[0]
-        self.lmstudio_cb = card.grid_slaves(row=3)[0].grid_slaves(column=1)[0]
 
         # ── Mode Section ──────────────────────────────
         card, r = _make_section(self, r, "MODE")
 
-        self.mode_var = ctk.StringVar(value="single")
+        self.mode_var = ctk.StringVar(value=MODE_SINGLE)
         mode_tips = {
-            "single": "One smith, one blade.\nA single agent loops alone,\nrefining each pass.",
-            "round-robin": "The blade passes between smiths.\nAgent A \u2192 B \u2192 C \u2192 A ...\nEach folds in the previous work.",
-            "parallel": "Multiple smiths, separate anvils.\nEach agent gets its own copy of the\nproject and works independently.\nCompare results after.",
-            "reviewer": "One forges, one inspects.\nThe first agent works, the second\ncritiques. Needs 2+ agents.",
+            MODE_SINGLE: "One smith, one blade.\nA single agent loops alone,\nrefining each pass.",
+            MODE_ROUND_ROBIN: "The blade passes between smiths.\nAgent A \u2192 B \u2192 C \u2192 A ...\nEach folds in the previous work.",
+            MODE_PARALLEL: "Multiple smiths, separate anvils.\nEach agent gets its own copy of the\nproject and works independently.\nCompare results after.",
+            MODE_REVIEWER: "One forges, one inspects.\nThe first agent works, the second\ncritiques. Needs 2+ agents.",
         }
 
         for i, (label, value) in enumerate([
-            ("Single", "single"),
-            ("Round-Robin", "round-robin"),
-            ("Parallel", "parallel"),
-            ("Reviewer", "reviewer"),
+            ("Single", MODE_SINGLE),
+            ("Round-Robin", MODE_ROUND_ROBIN),
+            ("Parallel", MODE_PARALLEL),
+            ("Reviewer", MODE_REVIEWER),
         ]):
             rb = ctk.CTkRadioButton(
                 card, text=label, variable=self.mode_var, value=value,
@@ -309,16 +303,7 @@ class ConfigPanel(ctk.CTkScrollableFrame):
     # ── Public API ────────────────────────────────────
 
     def get_selected_agents(self) -> list[str]:
-        agents = []
-        if self.claude_var.get():
-            agents.append("claude")
-        if self.gemini_var.get():
-            agents.append("gemini")
-        if self.deepseek_var.get():
-            agents.append("deepseek")
-        if self.lmstudio_var.get():
-            agents.append("lmstudio")
-        return agents
+        return [name for name, var in self._agent_vars.items() if var.get()]
 
     def get_prompt(self) -> str:
         return self.prompt_box.get("1.0", "end").strip()
@@ -380,3 +365,32 @@ class ConfigPanel(ctk.CTkScrollableFrame):
         if d:
             self.workdir_entry.delete(0, "end")
             self.workdir_entry.insert(0, d)
+
+    # ── Setter API (for session save/restore) ────────
+
+    def set_agents(self, agents: list[str]):
+        for name, var in self._agent_vars.items():
+            var.set(name in agents)
+
+    def set_mode(self, mode: str):
+        self.mode_var.set(mode)
+
+    def set_prompt(self, text: str):
+        self.prompt_box.delete("1.0", "end")
+        if text:
+            self.prompt_box.insert("1.0", text)
+
+    def set_working_dir(self, path: str):
+        self.workdir_entry.delete(0, "end")
+        if path:
+            self.workdir_entry.insert(0, path)
+
+    def set_limits(self, iterations: int, cost: float, duration_secs: int):
+        self.iter_entry.delete(0, "end")
+        self.iter_entry.insert(0, str(iterations))
+        self.cost_entry.delete(0, "end")
+        if cost:
+            self.cost_entry.insert(0, str(cost))
+        self.duration_entry.delete(0, "end")
+        if duration_secs:
+            self.duration_entry.insert(0, str(duration_secs // 60))

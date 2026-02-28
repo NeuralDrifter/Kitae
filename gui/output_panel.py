@@ -4,6 +4,7 @@
 """Center panel — tabbed agent output with Kitae theme."""
 
 import customtkinter as ctk
+from agents.base import SOURCE_LOOP
 from gui import theme as T
 
 
@@ -57,7 +58,7 @@ class OutputPanel(ctk.CTkFrame):
 
     def append(self, agent_name: str, text: str):
         self._append_to("All", text)
-        if agent_name and agent_name != "loop":
+        if agent_name and agent_name != SOURCE_LOOP:
             self.ensure_tab(agent_name)
             self._append_to(agent_name, text)
 
